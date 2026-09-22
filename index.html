@@ -1633,7 +1633,7 @@ coPhDBopen().then(function(db){ coPhDB = db; return coPhAll(); }).then(function(
    script (backend/Code.gs). A change goes up the moment it's made; everyone's
    state comes back every 15 seconds while the page is open. With no signal,
    changes wait on this phone (in order) and go up when it's back. */
-var BACKEND_URL = "", BACKEND_KEY = "";
+var BACKEND_URL = "https://script.google.com/macros/s/AKfycbwnerBzAyH_hBZHs1_lb4MOatDtBebBKgDxLgZ-MxSPZ8LbWkAMNoZmJkfMmZsII52i5Q/exec", BACKEND_KEY = "tp_aDqhdJoELbiXbjS4_65yjwYzEeWAeHB0";
 var SYNC_ME = "", syncQ = [], syncBusy = false, syncSig = "";
 try{ SYNC_ME = localStorage.getItem("turnsheet.by") || ""; }catch(e){}
 try{ syncQ = JSON.parse(localStorage.getItem(KEY + ".q") || "[]") || []; }catch(e){ syncQ = []; }
