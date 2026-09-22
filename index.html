@@ -208,6 +208,8 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   color:var(--ink-2);border:1px solid var(--line-2);white-space:nowrap}
 .pill.room{background:transparent}
 .pill.qty{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+.pill.price{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-weight:600;color:var(--done);background:var(--done-soft);border-color:transparent}
 .pill.buy{background:var(--flag-soft);border-color:transparent;color:var(--flag);font-weight:600}
 .pill.trade{border-color:transparent;background:color-mix(in srgb,var(--tc) 14%,transparent);color:var(--tc);font-weight:600}
 .note{
@@ -872,6 +874,7 @@ function taskHTML(t, ctxRoom){
     });
   }
   if(t.qty > 1) pills += '<span class="pill qty">&times;' + t.qty + '</span>';
+  if(t.cost) pills += '<span class="pill price">' + money(t.cost) + '</span>';
   var cartBtn = taskCartBtn(t);
 
   return '<div class="task' + (d ? " done" : "") + '" data-id="' + t.id + '" style="--tc:var(' + TRADES[t.trade][1] + ')">'
