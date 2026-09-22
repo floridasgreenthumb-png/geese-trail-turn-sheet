@@ -486,7 +486,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 /* ---------- crew camera: one floating button ---------- */
 .cam-fab{
   position:fixed;right:16px;z-index:90;
-  bottom:calc(84px + env(safe-area-inset-bottom,0px));
+  bottom:calc(150px + env(safe-area-inset-bottom,0px));
   display:flex;flex-direction:column;align-items:center;gap:8px;
 }
 .cam-fab-btn{
@@ -526,6 +526,17 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .cam-p b{color:var(--ink);overflow-wrap:anywhere}
 .cam-empty{font-size:14.5px;color:var(--muted);text-align:center;padding:24px 8px}
 .coph-st{grid-column:2 / -1;font-size:12px;color:var(--muted);margin-top:-4px}
+
+/* Complete Scope button (in the bottom bar) */
+.complete-scope{
+  display:flex;align-items:center;justify-content:center;gap:8px;width:100%;
+  margin:8px 0 2px;padding:13px;border:none;border-radius:11px;
+  background:var(--done);color:#fff;
+  font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:16.5px;letter-spacing:.02em;
+  box-shadow:0 4px 12px -4px rgba(15,118,110,.5);
+}
+.complete-scope svg{width:19px;height:19px;flex:0 0 auto}
+.complete-scope:active{transform:scale(.99)}
 /*CAM:CSS-END*/
 
 /* ---------- confirm ---------- */
@@ -616,6 +627,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
         <path d="M8 13V3.5M3.5 8 8 3.5 12.5 8"></path></svg>
     </button>
   </div>
+  <button class="complete-scope" id="completeScope" type="button">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 10.5 3.5 3.5L16 5"/></svg>
+    Complete Scope &amp; send photos
+  </button>
   <div class="legal">Scope total $2,374.32 &middot; Progress Tampa &middot; due Sep 17 &middot; 40 tasks</div>
 </div>
 
@@ -1976,8 +1991,36 @@ function onScopeComplete(pct){
   document.getElementById("camDoneSend").addEventListener("click", function(){ camShare(); });
 }
 
+/* ---- Complete Scope: confirm, then email every photo to Steve ---- */
+function camCompleteScope(){
+  var n = camItems.length;
+  ask("Complete this scope?",
+    n ? "This sends all " + n + " job photo" + (n === 1 ? "" : "s") + " to Steve's email."
+      : "No job photos yet — take a few with the camera button first, then complete the scope.",
+    n ? "Yes, send photos" : "OK",
+    function(){ if(n) camSendEmail(); });
+}
+function camSendEmail(){
+  if(camOn()){
+    camToast("Sending photos to Steve's email…");
+    camRetry();
+    api({op:"complete", turn:JOB.turn, house:JOB.short, to:JOB.sendTo}).then(function(r){
+      camToast("Sent " + (r.count || 0) + " photo" + (r.count === 1 ? "" : "s") + " to Steve's email.");
+      var bar = document.getElementById("camDoneBar"); if(bar) bar.remove();
+    }).catch(function(){
+      camToast("Couldn't reach the server — opening your share menu instead.");
+      camShare();
+    });
+  } else {
+    /* no backend yet: the phone's share menu, they pick Mail to Steve */
+    camShare();
+    camToast("Pick Mail and send the photos to " + (JOB.sendTo || "Steve") + ".");
+  }
+}
+
 /* ---- boot ---- */
 camFabInit();
+(function(){ var b = document.getElementById("completeScope"); if(b) b.addEventListener("click", camCompleteScope); })();
 camOpenDB().then(function(db){ camDB = db; return camLoad(); }).then(function(all){
   camItems = all.filter(function(i){ return i.turn === JOB.turn; }).sort(function(a, b){ return a.at < b.at ? -1 : 1; });
   camFabUpd(); camPump();
