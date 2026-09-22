@@ -1618,7 +1618,7 @@ function coPhCap(e){
   if(p){ p.caption = c.value; coPhPut(p); }
 }
 
-document.getElementById("coOpen").onclick = coOpen;
+(function(){ var b = document.getElementById("coOpen"); if(b) b.onclick = coOpen; })();
 (function(){ var b = document.getElementById("coPhotosOpen"); if(b) b.onclick = coPhOpen; })();
 coPhDBopen().then(function(db){ coPhDB = db; return coPhAll(); }).then(function(all){
   coPhotos = all.filter(function(p){ return p.turn === JOB.turn; })
