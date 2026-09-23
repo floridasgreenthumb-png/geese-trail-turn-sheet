@@ -592,6 +592,21 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:14px;letter-spacing:.02em;
 }
 
+/* view-only link (?view=1): watch progress + photos, no controls */
+.viewonly .tick{pointer-events:none}
+.viewonly .tickcap{visibility:hidden}
+.viewonly [data-act="reopen"],
+.viewonly [data-act="add"],.viewonly [data-act="remove"],
+.viewonly [data-act="mcart"],.viewonly [data-act="mtick"],
+.viewonly [data-qty],.viewonly [data-qrst],.viewonly [data-qin],
+.viewonly #addAll,.viewonly #emptyCart,.viewonly #openAll,
+.viewonly #clearMats,.viewonly #copyList,
+.viewonly #cartbar,.viewonly .complete-scope,
+.viewonly .cam-fab-btn{display:none !important}
+.vo-tag{position:fixed;left:50%;top:calc(8px + env(safe-area-inset-top,0px));transform:translateX(-50%);
+  z-index:96;background:var(--ink);color:var(--paper);font-size:11.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;border-radius:999px;padding:4px 13px;box-shadow:var(--shadow);pointer-events:none}
+
 .cam-p{margin:0 0 8px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
 .cam-p b{color:var(--ink);overflow-wrap:anywhere}
 .cam-empty{font-size:14.5px;color:var(--muted);text-align:center;padding:24px 8px}
@@ -827,6 +842,14 @@ function matsFor(id){ return MATS.filter(function(m){ return m.tasks.indexOf(id)
 
 /* ============================ STATE ============================ */
 var KEY = "turn487966.v1";
+/* look-only link (?view=1): shows live progress + photos, but no ticking, no
+   cart, no camera, no complete — for clients/supers who just want to watch. */
+var VIEWONLY = /[?&](view|ro)=1/.test(location.search);
+if(VIEWONLY){
+  try{ document.documentElement.classList.add("viewonly"); }catch(e){}
+  try{ var vt = document.createElement("div"); vt.className = "vo-tag";
+       vt.textContent = "View only · live progress"; document.body.appendChild(vt); }catch(e){}
+}
 var state = {done:{}, mats:{}, qty:{}, store:{}, cart:{}};
 try{ var raw = localStorage.getItem(KEY); if(raw) state = JSON.parse(raw) || state; }catch(e){}
 if(!state.done) state.done = {};
@@ -1871,7 +1894,8 @@ camInput.addEventListener("change", function(){
   var f = camInput.files && camInput.files[0]; camInput.value = "";
   if(f) camAdd(f);
 });
-function camTake(){ camInput.click(); }
+function camViewOnly(){ return typeof VIEWONLY !== "undefined" && VIEWONLY; }
+function camTake(){ if(camViewOnly()) return; camInput.click(); }
 function camAdd(file){
   camToast("Loading preview…");
   camShrink(file).then(function(blob){ camPreview(blob); })
@@ -2049,12 +2073,14 @@ function camPanel(){
         ? (c.remote ? ' &middot; ' + c.remote + ' from the crew' : '')
           + (c.left ? ' &middot; ' + c.left + ' uploading' : '')
         : '') + '</p>'
-    + '<div class="co-acts"><button class="btn primary" data-cp="take">Take a photo</button>'
-    + (c.mine ? '<button class="btn" data-cp="share">Send my photos now</button>' : '')
-    + (c.bad ? '<button class="btn" data-cp="retry">Retry uploads</button>' : '') + '</div></section>';
+    + '<div class="co-acts">'
+    + (camViewOnly() ? '' : '<button class="btn primary" data-cp="take">Take a photo</button>')
+    + (!camViewOnly() && c.mine ? '<button class="btn" data-cp="share">Send my photos now</button>' : '')
+    + (!camViewOnly() && c.bad ? '<button class="btn" data-cp="retry">Retry uploads</button>' : '') + '</div></section>';
   if(!c.n){
-    h += '<p class="cam-empty">No photos yet. Tap the camera button to add one.'
-      + (camOn() ? ' Anything the crew takes shows up here too.' : '') + '</p>';
+    h += '<p class="cam-empty">' + (camViewOnly()
+      ? 'No photos yet. They’ll show up here as the crew takes them.'
+      : 'No photos yet. Tap the camera button to add one.' + (camOn() ? ' Anything the crew takes shows up here too.' : '')) + '</p>';
   } else {
     /* my photos + everyone else's, in the order they were taken */
     var combined = camItems.map(function(it){ return {kind:"local", it:it}; })
@@ -2305,7 +2331,7 @@ if(camOn()){
    drops a "Update" bar at the top. One tap reloads to the latest — no
    reinstall, and checkmarks/photos are kept. */
 (function(){
-  var CAM_BUILD = "20260923-162452";          // stamped in at publish time
+  var CAM_BUILD = "20260923-163631";          // stamped in at publish time
   var GAP = 3 * 60 * 1000;              // don't hit the server more than every 3 min
   var last = 0, shown = false;
   function verUrl(){
@@ -2378,6 +2404,7 @@ function closeAsk(){
 
 /* marking complete asks first; reopening never does */
 function setDone(id, yes, after){
+  if(VIEWONLY) return;                 // look-only link can't change anything
   if(!yes){
     delete state.done[id]; delete DONE_BY[id]; save(); commitTask(id, false);
     if(after) after(); return;
@@ -2469,6 +2496,7 @@ document.getElementById("wrap").addEventListener("click", function(e){
   if(re){ setDone(+re.closest(".task").dataset.id, false, render); return; }
   var ph = e.target.closest('[data-act="photo"]');
   if(ph){ openPhoto(+ph.closest(".task").dataset.id); return; }
+  if(VIEWONLY) return;                 // beyond this point everything changes state
   var addb = e.target.closest('[data-act="add"]');
   if(addb){
     var aid = addb.dataset.mid;
@@ -2542,6 +2570,7 @@ document.getElementById("wrap").addEventListener("click", function(e){
 
 document.getElementById("wrap").addEventListener("change", function(e){
   if(e.target.id === "hideSettled"){ hideSettled = e.target.checked; save2(); render(); return; }
+  if(VIEWONLY) return;
   var qi = e.target.closest("[data-qin]");
   if(qi){ setQty(qi.dataset.qin, parseInt(qi.value, 10) || 1); render(); return; }
 });
