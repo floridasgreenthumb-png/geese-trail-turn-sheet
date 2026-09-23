@@ -524,9 +524,9 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   padding:10px 18px;border:none;border-radius:9px;background:#fff;color:var(--done);
   font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:15px;
 }
-/* in-app photo preview: keep or retake */
+/* in-app photo preview: keep or retake (sits above the photo panel, z 150) */
 .cam-prev{
-  position:fixed;inset:0;z-index:130;background:#000;
+  position:fixed;inset:0;z-index:160;background:#000;
   display:flex;flex-direction:column;
   padding-top:env(safe-area-inset-top,0px);
 }
@@ -542,6 +542,37 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .cam-prev-bar button:active{transform:scale(.98)}
 .cam-prev-retake{background:#2a2f2e;color:#fff}
 .cam-prev-keep{background:var(--done);color:#fff}
+
+/* photo library: grid of tappable thumbnails */
+.cam-h{margin:0 0 10px;font-family:"Barlow Semi Condensed",sans-serif;font-size:16px;font-weight:700;color:var(--ink)}
+.cam-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cam-cell{position:relative;padding:0;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;
+  background:var(--surface-2);aspect-ratio:1;cursor:pointer}
+.cam-cell img{width:100%;height:100%;object-fit:cover;display:block}
+.cam-cell:active{transform:scale(.97)}
+.cam-dot{position:absolute;top:6px;right:6px;width:12px;height:12px;border-radius:50%;
+  border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.cam-dot.ok{background:var(--done)}
+.cam-dot.wait{background:var(--flag)}
+.cam-dot.bad{background:#c1121f}
+.cam-legend{margin:10px 2px 0;font-size:12.5px;color:var(--muted)}
+
+/* full-screen single-photo viewer */
+.cam-view-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:#000}
+.cam-view-x{background:none;border:none;color:#fff;font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:16px}
+.cam-view-st{color:#cfd6d3;font-size:13px;text-align:right}
+.cam-view-bar{display:flex;gap:10px;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));background:#000}
+.cam-view-note{flex:1;min-width:0;min-height:48px;padding:12px 14px;font:inherit;font-size:15px;color:#fff;
+  background:#1c211f;border:1px solid #333c39;border-radius:10px}
+.cam-view-note::placeholder{color:#8c9793}
+.cam-view-del{padding:0 16px;min-height:48px;border:1px solid #5a2222;border-radius:10px;
+  background:#2a1414;color:#ff9b9b;font-weight:700;font-size:14px}
+
+/* name field inside the Complete-scope confirm */
+.ask-name{display:block;width:100%;min-height:48px;margin:4px 0 14px;padding:12px 14px;font:inherit;font-size:16px;
+  color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:10px}
+.ask-name:focus{outline:none;border-color:var(--done);box-shadow:0 0 0 3px var(--done-soft)}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed}
 
 .cam-p{margin:0 0 8px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
 .cam-p b{color:var(--ink);overflow-wrap:anywhere}
@@ -1962,18 +1993,64 @@ function camPanel(){
   if(!c.n){
     h += '<p class="cam-empty">No photos yet. Tap the camera button to add one.</p>';
   } else {
-    h += '<section class="co-card"><div class="coph-list">';
+    h += '<section class="co-card"><h3 class="cam-h">Photos taken &middot; ' + c.n + '</h3><div class="cam-grid">';
     camItems.forEach(function(it, i){
       var u = URL.createObjectURL(it.blob); camUrls.push(u);
-      var st = it.status === "sent" ? "in Drive" : (it.status === "failed" ? "not sent" : (camOn() ? "uploading" : "on phone"));
-      h += '<div class="coph-item"><img src="' + u + '" alt="Job photo ' + (i + 1) + '">'
-        + '<input class="coph-cap" data-note="' + esc(it.id) + '" value="' + esc(it.note || "") + '" placeholder="Note (room / what it is)">'
-        + '<button class="coph-del" data-cp="del" data-id="' + esc(it.id) + '">Delete</button>'
-        + '<span class="coph-st">' + st + '</span></div>';
+      var dot = it.status === "sent" ? "ok" : (it.status === "failed" ? "bad" : "wait");
+      h += '<button type="button" class="cam-cell" data-cp="view" data-id="' + esc(it.id) + '" aria-label="Photo ' + (i + 1) + '">'
+        + '<img src="' + u + '" alt="Job photo ' + (i + 1) + '" loading="lazy">'
+        + '<span class="cam-dot ' + dot + '"></span></button>';
     });
-    h += '</div></section>';
+    h += '</div><p class="cam-legend">Tap a photo to see it full-size, add a note, or delete it.</p></section>';
   }
   camEl.querySelector(".co-body").innerHTML = h;
+}
+
+/* ---- full-screen view of one photo from the library ---- */
+var camViewEl = null, camViewUrl = null;
+function camStatusText(it){
+  return it.status === "sent" ? (camOn() ? "Saved to Steve’s Drive" : "Sent")
+       : it.status === "failed" ? "Not sent yet — will retry"
+       : (camOn() ? "Uploading…" : "Saved on this phone");
+}
+function camView(id){
+  var it = camItems.filter(function(i){ return i.id === id; })[0];
+  if(!it) return;
+  camViewClose();
+  camViewUrl = URL.createObjectURL(it.blob);
+  camViewEl = document.createElement("div");
+  camViewEl.className = "cam-prev cam-view";
+  camViewEl.setAttribute("role", "dialog"); camViewEl.setAttribute("aria-modal", "true");
+  camViewEl.innerHTML = '<div class="cam-view-top"><button type="button" class="cam-view-x" data-cv="close">&larr; All photos</button>'
+    + '<span class="cam-view-st">' + camStatusText(it) + '</span></div>'
+    + '<div class="cam-prev-img"><img src="' + camViewUrl + '" alt="Job photo"></div>'
+    + '<div class="cam-view-bar">'
+    + '<input class="cam-view-note" data-note="' + esc(it.id) + '" value="' + esc(it.note || "") + '" placeholder="Note (room / what it is)">'
+    + '<button type="button" class="cam-view-del" data-cv="del" data-id="' + esc(it.id) + '">Delete</button>'
+    + '</div>';
+  document.body.appendChild(camViewEl);
+  document.body.style.overflow = "hidden";
+  camViewEl.addEventListener("click", camViewClick);
+  camViewEl.addEventListener("input", camPanelNote);
+}
+function camViewClose(){
+  if(camViewUrl){ URL.revokeObjectURL(camViewUrl); camViewUrl = null; }
+  if(camViewEl){ camViewEl.remove(); camViewEl = null; document.body.style.overflow = camEl ? "hidden" : ""; }
+}
+function camViewClick(e){
+  var b = e.target.closest("[data-cv]"); if(!b) return;
+  var a = b.dataset.cv;
+  if(a === "close") return camViewClose();
+  if(a === "del"){
+    var it = camItems.filter(function(i){ return i.id === b.dataset.id; })[0];
+    if(!it) return;
+    ask("Delete this photo?",
+      it.status === "sent" ? "It stays in Steve's Drive; this only removes it from this phone." : "It hasn't been sent yet, so it'll be gone for good.",
+      "Delete", function(){
+        camItems = camItems.filter(function(i){ return i !== it; });
+        camRemove(it.id).then(function(){ camViewClose(); camFabUpd(); });
+      });
+  }
 }
 function camPanelNote(e){
   var c = e.target.closest("[data-note]"); if(!c) return;
@@ -1985,6 +2062,7 @@ function camPanelClick(e){
   var a = b.dataset.cp;
   if(a === "close") return camPanelClose();
   if(a === "take") return camTake();
+  if(a === "view") return camView(b.dataset.id);
   if(a === "share") return camShare();
   if(a === "retry") return camRetry();
   if(a === "del"){
@@ -1998,11 +2076,12 @@ function camPanelClick(e){
       });
   }
 }
-function camShare(){
+function camShare(by){
+  var who = by ? " Completed by " + by + "." : "";
   var files = camItems.map(function(i){ return new File([i.blob], i.name, {type:"image/jpeg"}); });
   if(navigator.canShare && navigator.canShare({files:files})){
     navigator.share({files:files, title:"Job photos - " + JOB.short,
-      text:"Photos for " + JOB.short + " (Turn " + JOB.turn + "). Send to " + (JOB.sendTo || "Steve") + "."}).catch(function(){});
+      text:"Photos for " + JOB.short + " (Turn " + JOB.turn + ")." + who + " Send to " + (JOB.sendTo || "Steve") + "."}).catch(function(){});
     return;
   }
   files.forEach(function(f, n){
@@ -2036,29 +2115,70 @@ function onScopeComplete(pct){
   document.getElementById("camDoneSend").addEventListener("click", function(){ camShare(); });
 }
 
-/* ---- Complete Scope: confirm, then email every photo to Steve ---- */
+/* ---- Complete Scope: confirm + sign your name, then email every photo to Steve ---- */
 function camCompleteScope(){
   var n = camItems.length;
-  ask("Complete this scope?",
-    n ? "This sends all " + n + " job photo" + (n === 1 ? "" : "s") + " to Steve's email."
-      : "No job photos yet — take a few with the camera button first, then complete the scope.",
-    n ? "Yes, send photos" : "OK",
-    function(){ if(n) camSendEmail(); });
+  if(!n){
+    ask("Complete this scope?",
+      "No job photos yet — take a few with the camera button first, then complete the scope.",
+      "OK", function(){});
+    return;
+  }
+  camCompleteAsk(n);
 }
-function camSendEmail(){
+function camSavedName(){ try{ return localStorage.getItem("fgt.crewName") || ""; }catch(e){ return ""; } }
+var camDoneEl = null;
+function camCompleteAsk(n){
+  if(camDoneEl) return;
+  camDoneEl = document.createElement("div");
+  camDoneEl.className = "ask";
+  camDoneEl.innerHTML = '<div class="ask-card" role="alertdialog" aria-modal="true" aria-labelledby="cdT">'
+    + '<h3 id="cdT">Complete this scope?</h3>'
+    + '<p>This sends all ' + n + ' job photo' + (n === 1 ? "" : "s") + ' to Steve&rsquo;s email. Type your name so he knows who finished it.</p>'
+    + '<input class="ask-name" id="camDoneName" type="text" autocomplete="name" autocapitalize="words"'
+    + ' placeholder="Your name" value="' + esc(camSavedName()) + '" aria-label="Your name">'
+    + '<div class="ask-row">'
+    + '<button class="btn" data-cd="no">Cancel</button>'
+    + '<button class="btn primary" id="camDoneYes" data-cd="yes" disabled>Complete &amp; send</button>'
+    + '</div></div>';
+  document.body.appendChild(camDoneEl);
+  document.body.style.overflow = "hidden";
+  var inp = document.getElementById("camDoneName"), yes = document.getElementById("camDoneYes");
+  function valid(){ return inp.value.replace(/[^A-Za-z]/g, "").length >= 2; }   // at least two letters
+  function upd(){ yes.disabled = !valid(); }
+  inp.addEventListener("input", upd); upd();
+  camDoneEl.addEventListener("click", function(e){
+    if(e.target === camDoneEl || e.target.closest('[data-cd="no"]')) return camCompleteClose();
+    if(e.target.closest('[data-cd="yes"]')){
+      if(!valid()) return;
+      var name = inp.value.trim();
+      try{ localStorage.setItem("fgt.crewName", name); }catch(_){}
+      camCompleteClose();
+      camSendEmail(name);
+    }
+  });
+  setTimeout(function(){ inp.focus(); }, 40);
+}
+function camCompleteClose(){
+  if(!camDoneEl) return;
+  camDoneEl.remove(); camDoneEl = null;
+  document.body.style.overflow = (camEl || camViewEl) ? "hidden" : "";
+}
+function camSendEmail(by){
+  by = by || "";
   if(camOn()){
     camToast("Sending photos to Steve's email…");
     camRetry();
-    api({op:"complete", turn:JOB.turn, house:JOB.short, to:JOB.sendTo}).then(function(r){
+    api({op:"complete", turn:JOB.turn, house:JOB.short, to:JOB.sendTo, by:by}).then(function(r){
       camToast("Sent " + (r.count || 0) + " photo" + (r.count === 1 ? "" : "s") + " to Steve's email.");
       var bar = document.getElementById("camDoneBar"); if(bar) bar.remove();
     }).catch(function(){
       camToast("Couldn't reach the server — opening your share menu instead.");
-      camShare();
+      camShare(by);
     });
   } else {
     /* no backend yet: the phone's share menu, they pick Mail to Steve */
-    camShare();
+    camShare(by);
     camToast("Pick Mail and send the photos to " + (JOB.sendTo || "Steve") + ".");
   }
 }
