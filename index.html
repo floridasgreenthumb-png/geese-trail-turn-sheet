@@ -574,6 +574,19 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .ask-name:focus{outline:none;border-color:var(--done);box-shadow:0 0 0 3px var(--done-soft)}
 .btn.primary:disabled{opacity:.45;cursor:not-allowed}
 
+/* auto-updater bar (top of screen, above everything) */
+.upd-bar{
+  position:fixed;left:0;right:0;top:0;z-index:210;
+  display:flex;align-items:center;justify-content:center;gap:14px;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;
+  background:var(--ink);color:var(--paper);font-size:14px;font-weight:600;
+  box-shadow:0 4px 14px rgba(0,0,0,.28);
+}
+.upd-bar button{
+  padding:8px 18px;border:none;border-radius:8px;background:var(--done);color:#fff;
+  font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:14px;letter-spacing:.02em;
+}
+
 .cam-p{margin:0 0 8px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
 .cam-p b{color:var(--ink);overflow-wrap:anywhere}
 .cam-empty{font-size:14.5px;color:var(--muted);text-align:center;padding:24px 8px}
@@ -2194,6 +2207,52 @@ window.addEventListener("online", camRetry);
 document.addEventListener("visibilitychange", function(){ if(!document.hidden) camRetry(); });
 setInterval(camRetry, 30000);
 /*CAM:JS-END*/
+
+/*UPD:JS-BEGIN*/
+/* ===================== AUTO-UPDATER =====================
+   A phone that already has this page open keeps running the version it
+   loaded. This quietly checks whether a newer version has been published
+   (a tiny "ver.txt" that sits next to this page) and, when there is one,
+   drops a "Update" bar at the top. One tap reloads to the latest — no
+   reinstall, and checkmarks/photos are kept. */
+(function(){
+  var CAM_BUILD = "20260923-152302";          // stamped in at publish time
+  var GAP = 3 * 60 * 1000;              // don't hit the server more than every 3 min
+  var last = 0, shown = false;
+  function verUrl(){
+    return location.pathname.replace(/[^/]*$/, "") + "ver.txt";  // sibling of this page
+  }
+  function check(){
+    if(shown || document.hidden) return;
+    var now = Date.now();
+    if(now - last < GAP) return;
+    last = now;
+    fetch(verUrl() + "?t=" + now, {cache:"no-store"}).then(function(r){
+      return r.ok ? r.text() : null;
+    }).then(function(t){
+      if(t == null) return;
+      t = t.trim();
+      if(t && CAM_BUILD && t !== CAM_BUILD) showBar();
+    }).catch(function(){});
+  }
+  function showBar(){
+    if(shown) return; shown = true;
+    var bar = document.createElement("div");
+    bar.className = "upd-bar";
+    bar.setAttribute("role", "status");
+    bar.innerHTML = '<span>A newer version is ready.</span>'
+      + '<button type="button" id="updNow">Update</button>';
+    document.body.appendChild(bar);
+    document.getElementById("updNow").addEventListener("click", function(){
+      /* new URL forces a fresh document, past any browser/CDN cache */
+      location.replace(location.pathname + "?v=" + Date.now() + location.hash);
+    });
+  }
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden) check(); });
+  setInterval(check, 60 * 1000);
+  setTimeout(check, 8000);              // first look shortly after load
+})();
+/*UPD:JS-END*/
 
 /* ============================ CONFIRM ============================ */
 var askEl = null, askPrev = null;
