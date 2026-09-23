@@ -555,7 +555,12 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .cam-dot.ok{background:var(--done)}
 .cam-dot.wait{background:var(--flag)}
 .cam-dot.bad{background:#c1121f}
+.cam-dot.crew{background:#2563eb}
 .cam-legend{margin:10px 2px 0;font-size:12.5px;color:var(--muted)}
+.cam-live{display:inline-block;vertical-align:middle;margin-left:6px;font-family:"IBM Plex Mono",monospace;
+  font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--done);
+  border-radius:999px;padding:2px 7px}
+.cam-view-info{flex:1;min-width:0;display:flex;align-items:center;color:#cfd6d3;font-size:14px}
 
 /* full-screen single-photo viewer */
 .cam-view-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:#000}
@@ -1916,13 +1921,31 @@ function camB64(blob){
     r.readAsDataURL(blob);
   });
 }
+/* a tiny preview the shared gallery can show on every phone */
+function camThumb(blob){
+  return new Promise(function(res){
+    var url = URL.createObjectURL(blob), img = new Image();
+    img.onload = function(){
+      var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, 260 / Math.max(w, h));
+      var c = document.createElement("canvas");
+      c.width = Math.round(w * k); c.height = Math.round(h * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      try{ res(c.toDataURL("image/jpeg", 0.55).split(",")[1]); }catch(e){ res(""); }
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); res(""); };
+    img.src = url;
+  });
+}
+function camAtSec(x){ return typeof x.at === "number" ? x.at : Math.floor(new Date(x.at).getTime() / 1000); }
 function camPump(){
   if(camBusy || !camOn() || navigator.onLine === false) return;
   var next = camItems.filter(function(i){ return i.status === "waiting"; })[0];
   if(!next) return;
   camBusy = true;
-  camB64(next.blob).then(function(data){
-    return api({op:"photo", turn:JOB.turn, house:JOB.short, room:CAM_ROOM, name:next.name, data:data});
+  Promise.all([camB64(next.blob), camThumb(next.blob)]).then(function(r){
+    return api({op:"photo", turn:JOB.turn, house:JOB.short, room:CAM_ROOM, name:next.name,
+                data:r[0], thumb:r[1], id:next.id, at:camAtSec(next)});
   }).then(function(){
     next.status = "sent"; return camPut(next);
   }).catch(function(){
@@ -1935,9 +1958,31 @@ function camPump(){
 function camRetry(){ camItems.forEach(function(i){ if(i.status === "failed") i.status = "waiting"; }); camPump(); }
 function camServerCount(n){ camCrew = n; if(camEl) camPanel(); }
 function camCounts(){
-  return {n:camItems.length,
+  var remote = Object.keys(camRemote).length;
+  return {n:camItems.length + remote,
+          mine:camItems.length,
+          remote:remote,
           left:camItems.filter(function(i){ return i.status !== "sent"; }).length,
           bad:camItems.filter(function(i){ return i.status === "failed"; }).length};
+}
+
+/* ---- shared gallery: pull in photos other phones took ---- */
+var camRemote = {}, camGallerySince = 0, camGalleryBusy = false;
+function camGalleryPump(){
+  if(!camOn() || camGalleryBusy || document.hidden || navigator.onLine === false) return;
+  camGalleryBusy = true;
+  api({op:"gallery", turn:JOB.turn, since:camGallerySince}).then(function(r){
+    camGalleryBusy = false;
+    if(!r || !r.items) return;
+    var mine = {}; camItems.forEach(function(i){ mine[i.id] = 1; });
+    var changed = false;
+    r.items.forEach(function(e){
+      if((e.at || 0) > camGallerySince) camGallerySince = e.at;
+      if(mine[e.id]) return;                       // it's one of my own uploads
+      if(!camRemote[e.id]){ camRemote[e.id] = e; changed = true; }
+    });
+    if(changed){ camFabUpd(); if(camEl) camPanel(); }
+  }).catch(function(){ camGalleryBusy = false; });
 }
 
 /* ---- the floating button ---- */
@@ -1982,6 +2027,7 @@ function camPanelOpen(){
   camEl.addEventListener("click", camPanelClick);
   camEl.addEventListener("input", camPanelNote);
   camPanel();
+  camGalleryPump();                    // grab the latest crew photos right away
 }
 function camPanelClose(){
   if(!camEl) return;
@@ -1995,32 +2041,47 @@ function camPanel(){
   var c = camCounts();
   var h = '<section class="co-card"><p class="cam-p">'
     + (camOn()
-        ? 'Photos upload to Steve&rsquo;s Google Drive by themselves, and go to him automatically once every task is complete.'
+        ? 'Everyone on this job sees the same photos &mdash; they upload to Steve&rsquo;s Google Drive and go to him automatically once every task is complete.'
         : 'Photos are saved on this phone. When every task is complete you&rsquo;ll get a one-tap button to send them to Steve.')
     + '</p>'
     + '<p class="cam-p mono">' + c.n + ' photo' + (c.n === 1 ? "" : "s")
-    + (camOn() ? ' &middot; ' + (c.n - c.left) + ' uploaded' + (c.left ? ' &middot; ' + c.left + ' waiting' : '') : '') + '</p>'
+    + (camOn()
+        ? (c.remote ? ' &middot; ' + c.remote + ' from the crew' : '')
+          + (c.left ? ' &middot; ' + c.left + ' uploading' : '')
+        : '') + '</p>'
     + '<div class="co-acts"><button class="btn primary" data-cp="take">Take a photo</button>'
-    + (c.n ? '<button class="btn" data-cp="share">Send all photos now</button>' : '')
+    + (c.mine ? '<button class="btn" data-cp="share">Send my photos now</button>' : '')
     + (c.bad ? '<button class="btn" data-cp="retry">Retry uploads</button>' : '') + '</div></section>';
   if(!c.n){
-    h += '<p class="cam-empty">No photos yet. Tap the camera button to add one.</p>';
+    h += '<p class="cam-empty">No photos yet. Tap the camera button to add one.'
+      + (camOn() ? ' Anything the crew takes shows up here too.' : '') + '</p>';
   } else {
-    h += '<section class="co-card"><h3 class="cam-h">Photos taken &middot; ' + c.n + '</h3><div class="cam-grid">';
-    camItems.forEach(function(it, i){
-      var u = URL.createObjectURL(it.blob); camUrls.push(u);
-      var dot = it.status === "sent" ? "ok" : (it.status === "failed" ? "bad" : "wait");
-      h += '<button type="button" class="cam-cell" data-cp="view" data-id="' + esc(it.id) + '" aria-label="Photo ' + (i + 1) + '">'
+    /* my photos + everyone else's, in the order they were taken */
+    var combined = camItems.map(function(it){ return {kind:"local", it:it}; })
+      .concat(Object.keys(camRemote).map(function(k){ return {kind:"remote", it:camRemote[k]}; }));
+    combined.sort(function(a, b){ return camAtSec(a.it) - camAtSec(b.it); });
+    h += '<section class="co-card"><h3 class="cam-h">Photos taken &middot; ' + c.n
+      + (camOn() ? ' <span class="cam-live">live</span>' : '') + '</h3><div class="cam-grid">';
+    combined.forEach(function(row, i){
+      var it = row.it, id = it.id, u, dot;
+      if(row.kind === "local"){
+        u = URL.createObjectURL(it.blob); camUrls.push(u);
+        dot = it.status === "sent" ? "ok" : (it.status === "failed" ? "bad" : "wait");
+      } else {
+        u = "data:image/jpeg;base64," + it.thumb; dot = "crew";
+      }
+      h += '<button type="button" class="cam-cell" data-cp="view" data-id="' + esc(id) + '" aria-label="Photo ' + (i + 1) + '">'
         + '<img src="' + u + '" alt="Job photo ' + (i + 1) + '" loading="lazy">'
         + '<span class="cam-dot ' + dot + '"></span></button>';
     });
-    h += '</div><p class="cam-legend">Tap a photo to see it full-size, add a note, or delete it.</p></section>';
+    h += '</div><p class="cam-legend">Tap a photo to see it full-size.'
+      + (c.remote ? ' Blue dot = taken by the crew.' : '') + '</p></section>';
   }
   camEl.querySelector(".co-body").innerHTML = h;
 }
 
 /* ---- full-screen view of one photo from the library ---- */
-var camViewEl = null, camViewUrl = null;
+var camViewEl = null, camViewUrl = null, camViewCurrent = null;
 function camStatusText(it){
   return it.status === "sent" ? (camOn() ? "Saved to Steve’s Drive" : "Sent")
        : it.status === "failed" ? "Not sent yet — will retry"
@@ -2028,27 +2089,49 @@ function camStatusText(it){
 }
 function camView(id){
   var it = camItems.filter(function(i){ return i.id === id; })[0];
-  if(!it) return;
+  var r = it ? null : camRemote[id];
+  if(!it && !r) return;
   camViewClose();
-  camViewUrl = URL.createObjectURL(it.blob);
+  camViewCurrent = id;
+  var imgSrc, status, bottom;
+  if(it){                                          // my own photo — full editing
+    camViewUrl = URL.createObjectURL(it.blob);
+    imgSrc = camViewUrl; status = camStatusText(it);
+    bottom = '<input class="cam-view-note" data-note="' + esc(it.id) + '" value="' + esc(it.note || "") + '" placeholder="Note (room / what it is)">'
+      + '<button type="button" class="cam-view-del" data-cv="del" data-id="' + esc(it.id) + '">Delete</button>';
+  } else {                                         // a crew photo — thumb now, full image loads in
+    imgSrc = "data:image/jpeg;base64," + r.thumb;
+    status = "From the crew" + (r.by ? " · " + r.by : "");
+    bottom = '<div class="cam-view-info">' + (r.room ? esc(r.room) + " · " : "") + 'loading full size…</div>';
+  }
   camViewEl = document.createElement("div");
   camViewEl.className = "cam-prev cam-view";
   camViewEl.setAttribute("role", "dialog"); camViewEl.setAttribute("aria-modal", "true");
   camViewEl.innerHTML = '<div class="cam-view-top"><button type="button" class="cam-view-x" data-cv="close">&larr; All photos</button>'
-    + '<span class="cam-view-st">' + camStatusText(it) + '</span></div>'
-    + '<div class="cam-prev-img"><img src="' + camViewUrl + '" alt="Job photo"></div>'
-    + '<div class="cam-view-bar">'
-    + '<input class="cam-view-note" data-note="' + esc(it.id) + '" value="' + esc(it.note || "") + '" placeholder="Note (room / what it is)">'
-    + '<button type="button" class="cam-view-del" data-cv="del" data-id="' + esc(it.id) + '">Delete</button>'
-    + '</div>';
+    + '<span class="cam-view-st">' + status + '</span></div>'
+    + '<div class="cam-prev-img"><img src="' + imgSrc + '" alt="Job photo"></div>'
+    + '<div class="cam-view-bar">' + bottom + '</div>';
   document.body.appendChild(camViewEl);
   document.body.style.overflow = "hidden";
   camViewEl.addEventListener("click", camViewClick);
   camViewEl.addEventListener("input", camPanelNote);
+  if(r){                                           // pull the full-size crew photo from Drive
+    api({op:"photofull", turn:JOB.turn, id:id}).then(function(res){
+      if(res && res.ok && camViewEl && camViewCurrent === id){
+        var img = camViewEl.querySelector(".cam-prev-img img");
+        if(img) img.src = "data:image/jpeg;base64," + res.data;
+        var info = camViewEl.querySelector(".cam-view-info");
+        if(info) info.textContent = (r.room ? r.room + " · " : "") + "taken by the crew";
+      }
+    }).catch(function(){
+      var info = camViewEl && camViewEl.querySelector(".cam-view-info");
+      if(info) info.textContent = "couldn't load full size";
+    });
+  }
 }
 function camViewClose(){
   if(camViewUrl){ URL.revokeObjectURL(camViewUrl); camViewUrl = null; }
-  if(camViewEl){ camViewEl.remove(); camViewEl = null; document.body.style.overflow = camEl ? "hidden" : ""; }
+  if(camViewEl){ camViewEl.remove(); camViewEl = null; camViewCurrent = null; document.body.style.overflow = camEl ? "hidden" : ""; }
 }
 function camViewClick(e){
   var b = e.target.closest("[data-cv]"); if(!b) return;
@@ -2204,8 +2287,14 @@ camOpenDB().then(function(db){ camDB = db; return camLoad(); }).then(function(al
   camFabUpd(); camPump();
 });
 window.addEventListener("online", camRetry);
-document.addEventListener("visibilitychange", function(){ if(!document.hidden) camRetry(); });
+document.addEventListener("visibilitychange", function(){ if(!document.hidden){ camRetry(); camGalleryPump(); } });
 setInterval(camRetry, 30000);
+/* live shared gallery: pull in what other phones have taken */
+if(camOn()){
+  setTimeout(camGalleryPump, 1500);
+  setInterval(camGalleryPump, 20000);
+  window.addEventListener("online", camGalleryPump);
+}
 /*CAM:JS-END*/
 
 /*UPD:JS-BEGIN*/
@@ -2216,7 +2305,7 @@ setInterval(camRetry, 30000);
    drops a "Update" bar at the top. One tap reloads to the latest — no
    reinstall, and checkmarks/photos are kept. */
 (function(){
-  var CAM_BUILD = "20260923-152303";          // stamped in at publish time
+  var CAM_BUILD = "20260923-152936";          // stamped in at publish time
   var GAP = 3 * 60 * 1000;              // don't hit the server more than every 3 min
   var last = 0, shown = false;
   function verUrl(){
