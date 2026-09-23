@@ -1701,7 +1701,7 @@ coPhDBopen().then(function(db){ coPhDB = db; return coPhAll(); }).then(function(
    script (backend/Code.gs). A change goes up the moment it's made; everyone's
    state comes back every 15 seconds while the page is open. With no signal,
    changes wait on this phone (in order) and go up when it's back. */
-var BACKEND_URL = "https://script.google.com/macros/s/AKfycbwnerBzAyH_hBZHs1_lb4MOatDtBebBKgDxLgZ-MxSPZ8LbWkAMNoZmJkfMmZsII52i5Q/exec", BACKEND_KEY = "tp_aDqhdJoELbiXbjS4_65yjwYzEeWAeHB0";
+var BACKEND_URL = "https://script.google.com/macros/s/AKfycbzh70eY91CL5hnjsNk9ha8RZe4b3WGWI9KJWMINnk9pbHzOmMfruAlf4zoW8FU_m7O3Hw/exec", BACKEND_KEY = "tp_aDqhdJoELbiXbjS4_65yjwYzEeWAeHB0";
 var SYNC_ME = "", syncQ = [], syncBusy = false, syncSig = "";
 try{ SYNC_ME = localStorage.getItem("turnsheet.by") || ""; }catch(e){}
 try{ syncQ = JSON.parse(localStorage.getItem(KEY + ".q") || "[]") || []; }catch(e){ syncQ = []; }
@@ -2305,7 +2305,7 @@ if(camOn()){
    drops a "Update" bar at the top. One tap reloads to the latest — no
    reinstall, and checkmarks/photos are kept. */
 (function(){
-  var CAM_BUILD = "20260923-152936";          // stamped in at publish time
+  var CAM_BUILD = "20260923-162452";          // stamped in at publish time
   var GAP = 3 * 60 * 1000;              // don't hit the server more than every 3 min
   var last = 0, shown = false;
   function verUrl(){
