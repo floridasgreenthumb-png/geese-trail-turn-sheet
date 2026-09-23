@@ -524,6 +524,25 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   padding:10px 18px;border:none;border-radius:9px;background:#fff;color:var(--done);
   font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:15px;
 }
+/* in-app photo preview: keep or retake */
+.cam-prev{
+  position:fixed;inset:0;z-index:130;background:#000;
+  display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top,0px);
+}
+.cam-prev-img{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:12px}
+.cam-prev-img img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+.cam-prev-bar{
+  display:flex;gap:12px;padding:14px 16px calc(16px + env(safe-area-inset-bottom,0px));background:#000;
+}
+.cam-prev-bar button{
+  flex:1;min-height:54px;padding:15px;border:none;border-radius:12px;
+  font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:17px;letter-spacing:.02em;
+}
+.cam-prev-bar button:active{transform:scale(.98)}
+.cam-prev-retake{background:#2a2f2e;color:#fff}
+.cam-prev-keep{background:var(--done);color:#fff}
+
 .cam-p{margin:0 0 8px;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
 .cam-p b{color:var(--ink);overflow-wrap:anywhere}
 .cam-empty{font-size:14.5px;color:var(--muted);text-align:center;padding:24px 8px}
@@ -1805,17 +1824,43 @@ camInput.addEventListener("change", function(){
 });
 function camTake(){ camInput.click(); }
 function camAdd(file){
-  camToast("Saving photo…");
-  camShrink(file).then(function(blob){
-    var d = new Date(), id = d.getTime().toString(36) + Math.random().toString(36).slice(2, 6);
-    var it = {id:id, turn:JOB.turn, at:d.toISOString(), note:"", name:camName(d, id, ""), status:"waiting", blob:blob};
-    camItems.push(it);
-    return camPut(it).then(function(){
-      camFabUpd();
-      camToast(camOn() ? "Photo saved · uploading" : "Photo saved on this phone");
-      camPump();
-    });
+  camToast("Loading preview…");
+  camShrink(file).then(function(blob){ camPreview(blob); })
+    .catch(function(e){ camToast("That photo couldn't be opened. Try again."); });
+}
+/* save + start the upload once the crew taps Keep */
+function camSave(blob){
+  var d = new Date(), id = d.getTime().toString(36) + Math.random().toString(36).slice(2, 6);
+  var it = {id:id, turn:JOB.turn, at:d.toISOString(), note:"", name:camName(d, id, ""), status:"waiting", blob:blob};
+  camItems.push(it);
+  camPut(it).then(function(){
+    camFabUpd();
+    camToast(camOn() ? "Photo saved · uploading" : "Photo saved on this phone");
+    camPump();
   }).catch(function(e){ camToast("That photo couldn't be saved."); });
+}
+
+/* ---- preview: look at the shot, then Keep or Retake ---- */
+var camPrevEl = null, camPrevUrl = null;
+function camPreview(blob){
+  camPrevClose();
+  camPrevUrl = URL.createObjectURL(blob);
+  camPrevEl = document.createElement("div");
+  camPrevEl.className = "cam-prev";
+  camPrevEl.setAttribute("role", "dialog"); camPrevEl.setAttribute("aria-modal", "true");
+  camPrevEl.innerHTML = '<div class="cam-prev-img"><img src="' + camPrevUrl + '" alt="Photo you just took"></div>'
+    + '<div class="cam-prev-bar">'
+    + '<button type="button" class="cam-prev-retake" id="camRetake">&#8634; Retake</button>'
+    + '<button type="button" class="cam-prev-keep" id="camKeep">&#10003; Keep photo</button>'
+    + '</div>';
+  document.body.appendChild(camPrevEl);
+  document.body.style.overflow = "hidden";
+  document.getElementById("camKeep").onclick = function(){ camPrevClose(); camSave(blob); };
+  document.getElementById("camRetake").onclick = function(){ camPrevClose(); camTake(); };
+}
+function camPrevClose(){
+  if(camPrevUrl){ URL.revokeObjectURL(camPrevUrl); camPrevUrl = null; }
+  if(camPrevEl){ camPrevEl.remove(); camPrevEl = null; document.body.style.overflow = ""; }
 }
 
 /* ---- uploading, one at a time ---- */
